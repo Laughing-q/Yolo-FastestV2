@@ -3,14 +3,16 @@ import torch.nn as nn
 
 from model.fpn import *
 from model.backbone.shufflenetv2 import *
+from utils.utils import handel_preds
 
 class Detector(nn.Module):
-    def __init__(self, classes, anchor_num, load_param, export_onnx = False):
+    def __init__(self, classes, anchor_num, load_param, export_onnx=False, cfg=None):
         super(Detector, self).__init__()
         out_depth = 72
         stage_out_channels = [-1, 24, 48, 96, 192]
 
         self.export_onnx = export_onnx
+        self.cfg = cfg
         self.backbone = ShuffleNetV2(stage_out_channels, load_param)
         self.fpn = LightFPN(stage_out_channels[-2] + stage_out_channels[-1], stage_out_channels[-1], out_depth)
 
@@ -31,17 +33,26 @@ class Detector(nn.Module):
         out_cls_3 = self.output_cls_layers(cls_3)
         
         if self.export_onnx:
-            out_reg_2 = out_reg_2.sigmoid()
-            out_obj_2 = out_obj_2.sigmoid()
-            out_cls_2 = F.softmax(out_cls_2, dim = 1)
-
-            out_reg_3 = out_reg_3.sigmoid()
-            out_obj_3 = out_obj_3.sigmoid()
-            out_cls_3 = F.softmax(out_cls_3, dim = 1)
-
-            print("export onnx ...")
-            return torch.cat((out_reg_2, out_obj_2, out_cls_2), 1).permute(0, 2, 3, 1), \
-                   torch.cat((out_reg_3, out_obj_3, out_cls_3), 1).permute(0, 2, 3, 1)  
+            # out_reg_2 = out_reg_2.sigmoid()
+            # out_obj_2 = out_obj_2.sigmoid()
+            # out_cls_2 = F.softmax(out_cls_2, dim = 1)
+            #
+            # out_reg_3 = out_reg_3.sigmoid()
+            # out_obj_3 = out_obj_3.sigmoid()
+            # out_cls_3 = F.softmax(out_cls_3, dim = 1)
+            #
+            # print("export onnx ...")
+            # # return torch.cat((out_reg_2, out_obj_2, out_cls_2), 1).permute(0, 2, 3, 1), \
+            #        # torch.cat((out_reg_3, out_obj_3, out_cls_3), 1).permute(0, 2, 3, 1)  
+            # h1, w1 = out_cls_2.shape[2:]
+            # h2, w2 = out_cls_3.shape[2:]
+            # out1 = torch.cat((out_reg_2, out_obj_2, out_cls_2), 1).view(-1, 95, h1 * w1)
+            # out2 = torch.cat((out_reg_3, out_obj_3, out_cls_3), 1).view(-1, 95, h2 * w2)
+            # return torch.cat([out1, out2], dim=-1).permute(0, 2, 1)
+            preds = out_reg_2, out_obj_2, out_cls_2, out_reg_3, out_obj_3, out_cls_3
+            output = handel_preds(preds, self.cfg, device=out_cls_2.device)
+            return output.type_as(out_cls_2)
+                     
 
         else:
             return out_reg_2, out_obj_2, out_cls_2, out_reg_3, out_obj_3, out_cls_3

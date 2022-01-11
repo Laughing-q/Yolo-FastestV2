@@ -306,7 +306,6 @@ def handel_preds(preds, cfg, device):
     anchors = torch.from_numpy(anchors.reshape(len(preds) // 3, cfg["anchor_num"], 2)).to(device)
 
     output_bboxes = []
-    layer_index = [0, 0, 0, 1, 1, 1]
 
     for i in range(len(preds) // 3):
         bacth_bboxes = []
@@ -325,29 +324,29 @@ def handel_preds(preds, cfg, device):
             c = c.reshape(c.shape[0],c.shape[1], 1, c.shape[2])
             c = c.repeat(1, 1, 3, 1)
 
-            anchor_boxes = torch.zeros(r.shape[0], r.shape[1], r.shape[2], r.shape[3] + c.shape[3] + 1)
 
             #计算anchor box的cx, cy
             grid = make_grid(r.shape[0], r.shape[1], cfg, device)
             stride = cfg["height"] /  r.shape[0]
-            anchor_boxes[:, :, :, :2] = ((r[:, :, :, :2].sigmoid() * 2. - 0.5) + grid) * stride
+            xy = ((r[:, :, :, :2].sigmoid() * 2. - 0.5) + grid) * stride
 
             #计算anchor box的w, h
             anchors_cfg = anchors[i]
-            anchor_boxes[:, :, :, 2:4] = (r[:, :, :, 2:4].sigmoid() * 2) ** 2 * anchors_cfg # wh
+            anchors_cfg = anchors_cfg.view(1, 1, 3, 2)
+            wh = (r[:, :, :, 2:4].sigmoid() * 2) ** 2 * anchors_cfg # wh
 
             #计算obj分数
-            anchor_boxes[:, :, :, 4] = o[:, :, :, 0].sigmoid()
+            obj = o[:, :, :, 0:1].sigmoid()
 
             #计算cls分数
-            anchor_boxes[:, :, :, 5:] = F.softmax(c[:, :, :, :], dim = 3)
+            cls = F.softmax(c[:, :, :, :], dim = 3)
+            anchor_boxes = torch.cat([xy, wh, obj, cls], dim=-1)
 
             #torch tensor 转为 numpy array
-            anchor_boxes = anchor_boxes.cpu().detach().numpy() 
-            bacth_bboxes.append(anchor_boxes)     
+            bacth_bboxes.append(anchor_boxes.view(-1, anchor_boxes.shape[-1]))     
 
         #n, anchor num, h, w, box => n, (anchor num*h*w), box
-        bacth_bboxes = torch.from_numpy(np.array(bacth_bboxes))
+        bacth_bboxes = torch.stack(bacth_bboxes, dim=0) if len(bacth_bboxes) > 1 else bacth_bboxes[0].unsqueeze(0)
         bacth_bboxes = bacth_bboxes.view(bacth_bboxes.shape[0], -1, bacth_bboxes.shape[-1]) 
 
         output_bboxes.append(bacth_bboxes)    
